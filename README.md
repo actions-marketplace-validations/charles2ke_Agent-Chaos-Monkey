@@ -343,8 +343,12 @@ Start the API, then run the credential-free demo suite with Node.js 22:
 
 ```bash
 node cli/run-suite.mjs examples/demo-suite.json --output results
+# The committed regression baseline, one test per failure mode:
+node cli/run-suite.mjs examples/agent-regression-suite.json --output results/regression
 # Run a suite exported from Laboratory against a configured API:
 node cli/run-suite.mjs suite.json --url https://chaos.example.test --timeout-ms 60000
+# Render a run as a Markdown table (for a CI job summary):
+node cli/summarize-results.mjs results/chaos-results.json --title 'Agent regression suite'
 ```
 
 The runner writes `chaos-results.json` and JUnit `chaos-results.xml` even for API
@@ -367,10 +371,35 @@ When outcomes are mixed, infrastructure errors take precedence over critical fai
 then inconclusive results. All tests still run.
 
 [The controlled CI workflow](.github/workflows/resilience.yml) runs backend tests,
-frontend checks, both Playwright suites and the headless demo with no production
-credentials. Its `resilience-reports-and-screenshots` artifact includes JSON/JUnit,
-browser reports and screenshots. Set the workflow job as a required repository check
-if you want it to block merges.
+frontend checks, both Playwright suites and the headless demo and regression suites
+with no production credentials. Its `resilience-reports-and-screenshots` artifact
+includes JSON/JUnit, browser reports and screenshots, and both suites are rendered
+into the job summary. `chaos-results.xml` is also published through a JUnit reporter,
+so each experiment surfaces as its own test row. Make the job a required status check
+in branch protection if you want a resilience regression to block the pull request.
+
+### The regression baseline
+
+[`examples/agent-regression-suite.json`](examples/agent-regression-suite.json) is the
+committed baseline: a healthy control, throttling recovery, exhausted HTTP 500 retries,
+expired auth with a reauthentication turn, a tool timeout that is retried, a latency
+spike inside the timeout, empty and malformed payloads, and a matrix run covering every
+chaos mode against its own control. Assertions that must block a merge are `critical`;
+observational ones such as measured backoff are `warning`, so they stay visible in the
+JSON report without failing the gate. `agentVersion` and `evaluator` are pinned so
+results stay comparable, timings are small and explicit so wall-clock variance cannot
+flip an outcome, and the file contains no credentials — the runner rejects suites that
+do. Supply an agent token through `CHAOS_AGENT_API_KEY` instead.
+
+Treat the file as a reviewable artifact: add experiments in Laboratory, **Save as test**,
+export the version 1 suite, and commit the diff whenever assertions change. When CI goes
+red, replay the stored record in Laboratory and compare it with the saved baseline to see
+which dimension regressed.
+
+[The nightly workflow](.github/workflows/nightly-resilience.yml) runs the same baseline
+on a schedule (and on demand, optionally against another committed suite) for drift
+detection. It is simulation-only: dispatched suites must reside under `examples/` or
+`suites/`, use the `simulation` transport, and must not define an `agentEndpoint`.
 
 ### MCP server
 

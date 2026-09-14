@@ -1,0 +1,112 @@
+name: Nightly resilience regression
+
+on:
+  schedule:
+    - cron: '17 3 * * *'
+  workflow_dispatch:
+    inputs:
+      suite:
+        description: Suite file to run, relative to the repository root
+        type: string
+        default: examples/agent-regression-suite.json
+      timeout-ms:
+        description: Per-test runner timeout in milliseconds
+        type: string
+        default: '60000'
+
+permissions:
+  contents: read
+
+concurrency:
+  group: nightly-resilience
+  cancel-in-progress: false
+
+jobs:
+  regression:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-dotnet@v5
+        with:
+          dotnet-version: '8.0.x'
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 22
+      - name: Run regression suite
+        shell: bash
+        env:
+          SUITE: ${{ inputs.suite || 'examples/agent-regression-suite.json' }}
+          TIMEOUT_MS: ${{ inputs.timeout-ms || '60000' }}
+          Llm__ApiKey: ''
+          ANTHROPIC_API_KEY: ''
+          OPENAI_API_KEY: ''
+        run: |
+          set -euo pipefail
+          case "$SUITE" in
+            /*|..|../*|*/../*|*/..) echo "Suite path must be relative and cannot contain '..'." >&2; exit 2 ;;
+          esac
+          repository_root=$(realpath -e -- "$GITHUB_WORKSPACE")
+          if ! suite_path=$(realpath -e -- "$repository_root/$SUITE"); then
+            echo "Suite file not found: $SUITE" >&2
+            exit 2
+          fi
+          case "$suite_path" in
+            "$repository_root"/examples/*.json|"$repository_root"/suites/*.json) ;;
+            *) echo "Suite must be a JSON file under examples/ or suites/." >&2; exit 2 ;;
+          esac
+          suite_display=${suite_path#"$repository_root"/}
+          SUITE_PATH="$suite_path" node --input-type=module - <<'NODE'
+          import { readFile } from 'node:fs/promises'
+
+          const suite = JSON.parse(await readFile(process.env.SUITE_PATH, 'utf8'))
+          if (!Array.isArray(suite.tests)) {
+            throw new Error('Nightly resilience suite must contain a tests array.')
+          }
+          const hasAgentEndpoint = value => value && typeof value === 'object' &&
+            Object.entries(value).some(([key, child]) =>
+              key === 'agentEndpoint' || hasAgentEndpoint(child))
+          const { tests, ...suiteOptions } = suite
+          if (hasAgentEndpoint(suiteOptions)) {
+            throw new Error('Nightly resilience suite must not define agentEndpoint.')
+          }
+          for (const [index, test] of tests.entries()) {
+            const name = test?.name ?? `test ${index + 1}`
+            if (test?.definition?.transport !== 'simulation') {
+              throw new Error(`Nightly resilience test "${name}" must use simulation transport.`)
+            }
+            if (hasAgentEndpoint(test)) {
+              throw new Error(`Nightly resilience test "${name}" must not define agentEndpoint.`)
+            }
+          }
+          NODE
+          dotnet run --project backend/ChaosMonkey.Api --no-launch-profile --urls http://localhost:5249 > /tmp/chaos-api.log 2>&1 &
+          api_pid=$!
+          trap 'kill "$api_pid" 2>/dev/null || true' EXIT
+          for attempt in {1..60}; do
+            if curl --fail --silent http://localhost:5249/api/health > /dev/null; then break; fi
+            if ! kill -0 "$api_pid" 2>/dev/null; then exit 2; fi
+            sleep 1
+          done
+          status=0
+          node cli/run-suite.mjs "$suite_path" --output results --timeout-ms "$TIMEOUT_MS" || status=$?
+          node cli/summarize-results.mjs results/chaos-results.json --title "Nightly: $suite_display" >> "$GITHUB_STEP_SUMMARY"
+          exit "$status"
+      - name: Publish suite results as JUnit
+        if: always()
+        uses: mikepenz/action-junit-report@v5
+        with:
+          report_paths: results/chaos-results.xml
+          check_name: Nightly resilience suite
+          annotate_only: true
+          detailed_summary: true
+          include_passed: true
+          require_tests: false
+          fail_on_failure: false
+      - name: Upload regression reports
+        if: always()
+        uses: actions/upload-artifact@v6
+        with:
+          name: nightly-resilience-reports
+          path: results/
+          retention-days: 14
