@@ -4,6 +4,7 @@ using ChaosMonkey.Api.Chaos;
 using ChaosMonkey.Api.Evaluation;
 using ChaosMonkey.Api.Experiments;
 using ChaosMonkey.Api.Models;
+using ChaosMonkey.Api.Lab;
 using Microsoft.Extensions.Options;
 
 var builder = WebApplication.CreateBuilder(args);
@@ -23,6 +24,7 @@ builder.Services.ConfigureHttpJsonOptions(options =>
 builder.Services.AddHttpClient(AgentInvoker.HttpClientName,
     client => client.Timeout = TimeSpan.FromMinutes(3));
 builder.Services.AddHttpClient(LlmEvaluator.HttpClientName);
+builder.Services.AddLab(builder.Configuration);
 
 builder.Services.AddSingleton<ChaosEngine>();
 builder.Services.AddSingleton<DemoAgent>();
@@ -41,6 +43,7 @@ builder.Services.AddCors(options => options.AddPolicy(corsPolicy, policy => poli
 var app = builder.Build();
 
 app.UseCors(corsPolicy);
+app.MapLab();
 
 app.MapGet("/api/health", () => Results.Ok(new { status = "ok" }));
 
