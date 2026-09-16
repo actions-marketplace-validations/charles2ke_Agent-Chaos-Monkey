@@ -163,4 +163,39 @@ test.describe('static GitHub Pages build', () => {
     await openMenu(page)
     await page.screenshot({ path: `${screenshots}/06-static-mobile-navigation.png` })
   })
+
+  test('Run chaos is reachable without hunting on a phone viewport', async ({ page }) => {
+    await page.setViewportSize({ width: 390, height: 664 })
+    await page.goto('./')
+
+    const run = page.getByRole('button', { name: 'Run chaos' })
+    await expect(run).toBeInViewport()
+
+    // It stays pinned below the top bar while the run pane is on screen.
+    await page.mouse.wheel(0, 700)
+    await expect(run).toBeInViewport()
+    const [topBarBox, pinnedRunBox] = await Promise.all([
+      page.locator('.topbar').boundingBox(),
+      run.boundingBox(),
+    ])
+    expect(topBarBox).not.toBeNull()
+    expect(pinnedRunBox).not.toBeNull()
+    expect(pinnedRunBox!.y).toBeGreaterThanOrEqual(topBarBox!.y + topBarBox!.height)
+
+    const scrollY = await page.evaluate(() => window.scrollY)
+    const targetScrollY = await page.evaluate(() =>
+      Math.min(window.scrollY + 200, document.documentElement.scrollHeight - window.innerHeight),
+    )
+    expect(targetScrollY).toBeGreaterThan(scrollY)
+    await page.evaluate((y) => window.scrollTo(0, y), targetScrollY)
+    expect(await page.evaluate(() => window.scrollY)).toBe(targetScrollY)
+    expect(Math.abs((await run.boundingBox())!.y - pinnedRunBox!.y)).toBeLessThanOrEqual(1)
+
+    await page.screenshot({ path: `${screenshots}/11-static-mobile-run-chaos.png` })
+
+    await run.click()
+    await expect(
+      page.getByRole('heading', { name: /unsafe|fragile|needs work|resilient/i }),
+    ).toBeVisible({ timeout: 30_000 })
+  })
 })
