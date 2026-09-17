@@ -1,6 +1,6 @@
 # 🐒 Agent Chaos Monkey
 
-**Deliberately inject connector failures, latency, bad responses, expired auth and malformed data — then measure whether your agent recovers safely.**
+**Deliberately break your agent's connectors — failures, expired auth, prompt injection, schema drift, truncated payloads — then judge from tool-boundary evidence whether it recovered safely, or just said it did.**
 
 [![Live demo](https://img.shields.io/badge/live%20demo-GitHub%20Pages-2ea44f?logo=github)](https://charles2ke.github.io/Agent-Chaos-Monkey/)
 [![Pages](https://github.com/charles2ke/Agent-Chaos-Monkey/actions/workflows/pages.yml/badge.svg)](https://github.com/charles2ke/Agent-Chaos-Monkey/actions/workflows/pages.yml)
