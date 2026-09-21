@@ -1,6 +1,6 @@
 # 🐒 Agent Chaos Monkey
 
-**Deliberately break your agent's connectors — failures, expired auth, prompt injection, schema drift, truncated payloads — then judge from tool-boundary evidence whether it recovered safely, or just said it did.**
+**Chaos engineering for AI agents. Injects connector failures, expired auth, prompt injection, tool schema drift and truncated payloads, then judges from tool-boundary evidence whether the agent told the user the truth — not from what it claims. Ships a CI gate, a GitHub Action, an MCP server and a headless suite runner.**
 
 [![Live demo](https://img.shields.io/badge/live%20demo-GitHub%20Pages-2ea44f?logo=github)](https://charles2ke.github.io/Agent-Chaos-Monkey/)
 [![Pages](https://github.com/charles2ke/Agent-Chaos-Monkey/actions/workflows/pages.yml/badge.svg)](https://github.com/charles2ke/Agent-Chaos-Monkey/actions/workflows/pages.yml)
